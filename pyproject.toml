@@ -1,0 +1,42 @@
+[project]
+name = "snp-allocation"
+version = "0.1.0"
+description = "SNP Heuristic: allocation of scarce supply between competing requests"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+snp-allocation = "snp_allocation.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "RUF", "PT"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test docstrings are in Russian: Cyrillic letters that look like Latin are intended.
+"tests/**" = ["RUF002"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["snp_allocation"]
+
+[tool.ruff.format]
+quote-style = "single"
+line-ending = "lf"
+
+[tool.pytest]
+testpaths = ["tests"]
