@@ -1,4 +1,5 @@
 import csv
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,23 +20,70 @@ class Case:
     requests: list[Request] = field(default_factory=list)
 
 
-def _read_rows(path: Path) -> list[tuple[int, dict[str, str]]]:
+_SUPPLY_COLUMNS = ('case_id', 'period', 'item', 'source_location', 'available_qty')
+_REQUEST_COLUMNS = (
+    'case_id',
+    'request_id',
+    'dest_location',
+    'priority',
+    'demand_qty',
+    'min_lot',
+    'rounding_value',
+)
+
+
+def _read_rows(
+    path: Path, columns: Sequence[str]
+) -> Iterator[tuple[int, dict[str, str]]]:
     with path.open(newline='', encoding='utf-8-sig') as file:
-        return [(line, row) for line, row in enumerate(csv.DictReader(file), start=2)]
+        reader = csv.reader(file, strict=True)
+        try:
+            header = next(reader, [])
+            missing = sorted(set(columns) - set(header))
+            if missing:
+                raise CsvFormatError(
+                    f'{path.name}:1: missing columns: {", ".join(missing)}'
+                )
+            if len(set(header)) != len(header):
+                raise CsvFormatError(f'{path.name}:1: duplicate column names')
+            for values in reader:
+                if not values:
+                    continue
+                line = reader.line_num
+                if len(values) != len(header):
+                    raise CsvFormatError(
+                        f'{path.name}:{line}: expected {len(header)} fields, '
+                        f'got {len(values)}'
+                    )
+                row = dict(zip(header, values, strict=True))
+                for column in columns:
+                    if not row[column].strip():
+                        raise CsvFormatError(
+                            f'{path.name}:{line}: {column} must not be empty'
+                        )
+                yield line, row
+        except csv.Error as exc:
+            raise CsvFormatError(
+                f'{path.name}:{reader.line_num}: invalid CSV: {exc}'
+            ) from exc
 
 
 def _to_int(path: Path, line: int, row: dict[str, str], column: str) -> int:
     try:
         return int(row[column])
-    except (KeyError, TypeError, ValueError) as e:
+    except ValueError as exc:
         raise CsvFormatError(
-            f'{path.name}:{line}: {column} must be an integer, got {row.get(column)!r}'
-        ) from e
+            f'{path.name}:{line}: {column} must be an integer, got {row[column]!r}'
+        ) from exc
 
 
 def load_cases(supply_path: Path, requests_path: Path) -> tuple[list[Case], list[str]]:
+    """Load cases and warn about requests referencing an unknown case.
+
+    Malformed headers, rows and numeric values raise CsvFormatError.
+    """
     cases: dict[str, Case] = {}
-    for line, row in _read_rows(supply_path):
+    for line, row in _read_rows(supply_path, _SUPPLY_COLUMNS):
         case_id = row['case_id']
         if case_id in cases:
             raise CsvFormatError(f'{supply_path.name}:{line}: duplicate {case_id}')
@@ -48,7 +96,7 @@ def load_cases(supply_path: Path, requests_path: Path) -> tuple[list[Case], list
         )
 
     warnings = []
-    for line, row in _read_rows(requests_path):
+    for line, row in _read_rows(requests_path, _REQUEST_COLUMNS):
         request = Request(
             request_id=row['request_id'],
             dest_location=row['dest_location'],

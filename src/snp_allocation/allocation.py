@@ -5,9 +5,14 @@ from fractions import Fraction
 from itertools import groupby
 from typing import Self
 
+_FILL_BITS = 64
+_FILL_SCALE = 1 << _FILL_BITS
+
 
 @dataclass(frozen=True, slots=True)
 class Request:
+    """Demand and shipment constraints; invalid values are excluded by allocate."""
+
     request_id: str
     dest_location: str
     priority: int
@@ -22,6 +27,8 @@ class AllocationInputError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Lot:
+    """Positive shipment quantities are multiples of step, starting at first."""
+
     step: int
     first: int
 
@@ -52,6 +59,11 @@ def is_valid(request: Request) -> bool:
 
 
 def allocate(available_qty: int, requests: Iterable[Request]) -> dict[str, int]:
+    """Allocate by priority and fill rate, breaking ties by request ID.
+
+    Invalid requests receive zero. Negative supply and duplicate IDs are errors.
+    Each priority may round up to a valid lot before the next priority is served.
+    """
     ordered = sorted(requests, key=lambda r: r.request_id)
     if available_qty < 0:
         raise AllocationInputError('available_qty must be non-negative')
@@ -69,31 +81,33 @@ def allocate(available_qty: int, requests: Iterable[Request]) -> dict[str, int]:
     return shipped
 
 
-_FILL_BITS = 64
-_FILL_SCALE = 1 << _FILL_BITS
-
-
 def _fill_rate(request: Request, shipped: dict[str, int]) -> Fraction:
     return Fraction(shipped[request.request_id], request.demand_qty)
 
 
-def _qty_at_fill(request: Request, cap: int, level_x: int) -> int:
-    target = -(-request.demand_qty * level_x >> _FILL_BITS)
+def _qty_at_fill(request: Request, lot: Lot, cap: int, fill_level: int) -> int:
+    target = -(-request.demand_qty * fill_level // _FILL_SCALE)
     if target > cap:
         return cap
-    return 0 if target == 0 else Lot.of(request).ceil(target)
+    return 0 if target == 0 else lot.ceil(target)
 
 
 def _fill_demand(level: Sequence[Request], budget: int, shipped: dict[str, int]) -> int:
     lots = {r.request_id: Lot.of(r) for r in level}
     caps = {r.request_id: lots[r.request_id].floor(r.demand_qty) for r in level}
-    if sum(caps.values()) <= budget:
+    total_cap = sum(caps.values())
+    if total_cap <= budget:
         shipped.update(caps)
-        return budget - sum(caps.values())
+        return budget - total_cap
 
     def state_at(x: int) -> dict[str, int]:
-        return {r.request_id: _qty_at_fill(r, caps[r.request_id], x) for r in level}
+        return {
+            r.request_id: _qty_at_fill(r, lots[r.request_id], caps[r.request_id], x)
+            for r in level
+        }
 
+    # Find an affordable common fill rate, then distribute the remaining lots
+    # in exactly the same order as the step-by-step greedy algorithm.
     low, high = 0, _FILL_SCALE
     while low < high:
         mid = (low + high + 1) // 2
