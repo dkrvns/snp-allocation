@@ -50,6 +50,8 @@ docker run --rm snp-allocation:dev
 при запуске. Зависимости фиксируются в `uv.lock`.
 
 Правила разработки подключены в [AGENTS.md](AGENTS.md) и [.codex/](.codex/AGENTS.md).
+Сила тестов и результаты проверки намеренными ошибками — в
+[TEST_REVIEW.md](TEST_REVIEW.md).
 
 ## Структура
 
@@ -63,4 +65,6 @@ docker run --rm snp-allocation:dev
 | `tests/allocation_test.py` | собственные сценарии и сверка с эталонным пошаговым алгоритмом |
 | `tests/csv_io_test.py` | формат CSV, диагностика ошибок, BOM и неизвестные кейсы |
 | `tests/cli_test.py` | вывод CLI и отказ на ошибках без частичного плана |
+| `tests/*_contract_test.py` | границы контрактов, независимый эталон и реальные CLI-запуски |
+| `tests/diagnostics_test.py` | полные списки предупреждений и граничные значения |
 | `Dockerfile` | отдельные development и runtime targets |
