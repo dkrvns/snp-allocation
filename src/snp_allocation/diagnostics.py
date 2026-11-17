@@ -2,6 +2,7 @@ from snp_allocation.allocation import Lot, Request
 
 
 def request_issues(request: Request) -> list[str]:
+    """Explain excluded requests and effective lot constraints without mutation."""
     if request.priority < 1:
         return [f'priority {request.priority} < 1, request excluded']
     for field in ('demand_qty', 'min_lot', 'rounding_value'):
